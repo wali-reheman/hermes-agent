@@ -106,10 +106,15 @@ class TestCredentialPoolSeedsFromDotEnv:
         assert active_sources == set()
         assert entries == []
 
-    def test_os_environ_still_wins_over_dotenv(self, isolated_hermes_home, monkeypatch):
-        """get_env_value checks os.environ first — verify seeding picks that up."""
-        _write_env_file(isolated_hermes_home, DEEPSEEK_API_KEY="sk-dotenv-stale")
-        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-env-fresh-xyz")
+    def test_dotenv_wins_over_stale_os_environ(self, isolated_hermes_home, monkeypatch):
+        """_seed_from_env uses _get_env_prefer_dotenv which checks .env first.
+
+        The user's deliberate ~/.hermes/.env config wins over stale inherited
+        os.environ vars from parent processes (Codex CLI, test scripts, etc.).
+        Regression for: stale env vars shadowing fresh .env edits causing 401s.
+        """
+        _write_env_file(isolated_hermes_home, DEEPSEEK_API_KEY="sk-dotenv-fresh")
+        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-or-STALE-from-shell")
 
         from agent.credential_pool import _seed_from_env
         entries = []
@@ -118,7 +123,9 @@ class TestCredentialPoolSeedsFromDotEnv:
         assert changed is True
         seeded = [e for e in entries if e.source == "env:DEEPSEEK_API_KEY"]
         assert len(seeded) == 1
-        assert seeded[0].access_token == "sk-env-fresh-xyz"
+        assert seeded[0].access_token == "sk-dotenv-fresh", (
+            f"Expected .env to win, got {seeded[0].access_token!r}"
+        )
 
 
 class TestAuthResolvesFromDotEnv:

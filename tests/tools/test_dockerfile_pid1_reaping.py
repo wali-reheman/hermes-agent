@@ -107,7 +107,7 @@ def test_dockerfile_entrypoint_routes_through_the_init(dockerfile_text):
 
 def test_dockerfile_installs_tui_dependencies(dockerfile_text):
     assert "ui-tui/package.json" in dockerfile_text
-    assert "ui-tui/packages/hermes-ink/package-lock.json" in dockerfile_text
+    assert "ui-tui/packages/hermes-ink/" in dockerfile_text  # dir copy replaces lock-file-level COPY
     assert any(
         "ui-tui" in step and "npm" in step and (" install" in step or " ci" in step)
         for step in _run_steps(dockerfile_text)
@@ -122,17 +122,27 @@ def test_dockerfile_builds_tui_assets(dockerfile_text):
 
 
 def test_dockerfile_materializes_local_tui_ink_package(dockerfile_text):
+    """Verify the bundled hermes-ink package is copied and usable at runtime.
+
+    The new flow (a49f4c617) copies ui-tui/packages/hermes-ink/ as a directory
+    and relies on npm_config_install_links=false + workspace symlinks so the
+    ui-tui build can resolve @hermes/ink without a separate materialize step.
+    """
+    # The package dir must be copied so ui-tui can find it as a file: dep
     assert any(
-        "ui-tui" in step
-        and "node_modules/@hermes/ink" in step
-        and "packages/hermes-ink" in step
-        and "rm -rf packages/hermes-ink/node_modules" in step
-        and "npm install --omit=dev" in step
-        and "--prefix node_modules/@hermes/ink" in step
-        and "rm -rf node_modules/@hermes/ink/node_modules/react" in step
-        and "await import('@hermes/ink')" in step
+        "COPY ui-tui/packages/hermes-ink/" in step or 'ui-tui/packages/hermes-ink/' in step
+        for step in _dockerfile_instructions(dockerfile_text)
+    ), "hermes-ink package dir must be copied into image"
+    # npm must run in ui-tui so @hermes/ink (file: dep) gets installed
+    assert any(
+        "ui-tui" in step and "npm" in step and (" install" in step or " ci" in step)
         for step in _run_steps(dockerfile_text)
-    )
+    ), "npm install must run in ui-tui context"
+    # The build must succeed (uses @hermes/ink at build time)
+    assert any(
+        "ui-tui" in step and "npm" in step and "run build" in step
+        for step in _run_steps(dockerfile_text)
+    ), "ui-tui build must run to verify @hermes/ink resolution"
 
 
 def test_dockerignore_excludes_nested_dependency_dirs():

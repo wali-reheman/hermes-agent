@@ -43,6 +43,12 @@ def _make_agent(monkeypatch):
         _iters_since_skill = 0
         _current_tool = None
         _last_activity = 0
+        _tool_guardrails = MagicMock()
+        # Simplified version of _append_guardrail_observation — returns function_result
+        # unchanged. The real method wraps with guardrail decisions; interrupt
+        # tests don't need guardrail coverage.
+        def _append_guardrail_observation(self, tool_name, function_args, function_result, *, failed):
+            return function_result
         _print_fn = print
         # Worker-thread tracking state mirrored from AIAgent.__init__ so the
         # real interrupt() method can fan out to concurrent-tool workers.
@@ -184,7 +190,7 @@ def test_running_concurrent_worker_sees_is_interrupted(monkeypatch):
     observed = {"saw_true": False, "poll_count": 0, "worker_tid": None}
     worker_started = threading.Event()
 
-    def polling_tool(name, args, task_id, call_id=None, messages=None):
+    def polling_tool(name, args, task_id, call_id=None, messages=None, pre_tool_block_checked=None):
         observed["worker_tid"] = threading.current_thread().ident
         worker_started.set()
         deadline = time.monotonic() + 5.0
