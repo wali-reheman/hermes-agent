@@ -853,7 +853,8 @@ def _looks_like_error_output(content: Any) -> bool:
     The old heuristic flagged any preview containing the substring "error",
     which painted perfectly normal terminal/json output red.  We now only
     mark output as an error when there is stronger evidence:
-      - structured JSON with an ``error`` key
+      - structured JSON with ``success`` explicitly False (canonical signal)
+      - structured JSON with ``error`` truthy AND ``success`` absent
       - structured JSON with ``status`` of error/failed
       - first line starts with a classic error marker
     """
@@ -866,7 +867,16 @@ def _looks_like_error_output(content: Any) -> bool:
         try:
             parsed = json.loads(content)
             if isinstance(parsed, dict):
-                if parsed.get("error"):
+                # "success" is the canonical signal; "error" alone is not
+                # sufficient because many APIs return {"error": null} or
+                # {"error": ""} on success.  Only flag as error when
+                # success is explicitly False/absent AND error is truthy.
+                success = parsed.get("success")
+                if success is False or (
+                    success is None
+                    and parsed.get("error")
+                    and str(parsed.get("error")).strip()
+                ):
                     return True
                 status = str(parsed.get("status") or "").strip().lower()
                 if status in {"error", "failed", "failure", "timeout"}:
@@ -879,7 +889,7 @@ def _looks_like_error_output(content: Any) -> bool:
         first.startswith("error:")
         or first.startswith("failed:")
         or first.startswith("traceback ")
-        or first.startswith("exception:")
+        or first.startswith("exception ")
     )
 
 
