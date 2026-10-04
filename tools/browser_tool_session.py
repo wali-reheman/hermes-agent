@@ -170,6 +170,10 @@ def _agent_browser_command_env(socket_dir: str) -> Dict[str, str]:
     env["AGENT_BROWSER_SOCKET_DIR"] = socket_dir
     if "AGENT_BROWSER_IDLE_TIMEOUT_MS" not in env:
         env["AGENT_BROWSER_IDLE_TIMEOUT_MS"] = str(_daemon_idle_timeout_seconds() * 1000)
+    if "AGENT_BROWSER_PROFILE" not in env:
+        from tools.bot_desktop.browser import profile_dir
+
+        env["AGENT_BROWSER_PROFILE"] = str(profile_dir())
     return env
 
 
